@@ -19,8 +19,10 @@ if I can hold on for a bit. This scratches that itch.
 
 == INSTALLATION
 
-1. Install the app on the phone by grabbing an APK from
-   releases.
+1. Install the app on the phone by grabbing an APK from here:
+
+    https://github.com/skogsgren/notiforward/releases/tag/android-latest
+
 2. Build the docker container on the server:
 
     git clone https://github.com/skogsgren/notiforward
@@ -29,6 +31,7 @@ if I can hold on for a bit. This scratches that itch.
 
    And then see example docker-compose on what to set
    when integrating into (pre-existing)? stack.
+
 3. On the client, clone the repo and symlink the script
    inside cli to bin, e.g:
 
