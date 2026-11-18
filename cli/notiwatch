@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+import argparse
+import datetime as dt
+import http.client
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+WAIT_S = 30  # server-side long-poll
+STYLE = sys.stdout.isatty() and "NO_COLOR" not in os.environ
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Stream phone notifications from a NotiForward server."
+    )
+    p.add_argument(
+        "--history",
+        type=int,
+        default=10,
+        metavar="N",
+        help="show the N most recent notifications on start (default 10, 0 for none)",
+    )
+    args = p.parse_args()
+    args.history = max(0, min(args.history, 1000))
+    return args
+
+
+def config() -> tuple[str, str]:
+    url = os.environ.get("NOTIFORWARD_URL", "").strip()
+    if not url:
+        sys.exit(
+            "set NOTIFORWARD_URL to the server base URL, e.g. http://100.x.y.z:8000"
+        )
+    if "://" not in url:
+        url = "http://" + url
+    return url.rstrip("/").removesuffix("/notify"), os.environ.get(
+        "NOTIFORWARD_TOKEN", ""
+    )
+
+
+def fetch(url: str, token: str, **params) -> list[dict]:
+    req = urllib.request.Request(
+        f"{url}/notifications?{urllib.parse.urlencode(params)}"
+    )
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(req, timeout=WAIT_S + 15) as resp:
+        return json.load(resp)
+
+
+def style(code: str, text: str) -> str:
+    return f"\033[{code}m{text}\033[0m" if STYLE else text
+
+
+def show(n: dict) -> None:
+    ms = n.get("posted_at_ms")
+    ts = dt.datetime.fromtimestamp(ms / 1000 if ms else n["received_at"])
+    stamp = (
+        ts.strftime("%H:%M:%S")
+        if ts.date() == dt.date.today()
+        else ts.strftime("%Y-%m-%d %H:%M")
+    )
+    body = n.get("big_text") or n.get("lines") or n.get("text") or ""
+    body = " ⏎ ".join(line for line in body.splitlines() if line.strip())
+    app = n.get("app_name") or n.get("app") or "?"
+    title = n.get("title") or ""
+    print(
+        f"{style('2', stamp)}  {style('1;36', app)}  {style('1', title)}"
+        f"{':' if title and body else ''} {body}".rstrip(),
+        flush=True,
+    )
+    sys.stdout.write("\a")
+    sys.stdout.flush()
+
+
+def main() -> None:
+    args = parse_args()
+    url, token = config()
+    last_id = None
+    backoff = 1
+    while True:
+        try:
+            if last_id is None:
+                recent = fetch(url, token, latest=max(args.history, 1))
+                for n in recent[-args.history :] if args.history else []:
+                    show(n)
+                last_id = recent[-1]["id"] if recent else 0
+                print(style("2", f"— watching {url} —"), file=sys.stderr, flush=True)
+            for n in fetch(url, token, after=last_id, limit=500, wait=WAIT_S):
+                last_id = n["id"]
+                show(n)
+            backoff = 1
+        except KeyboardInterrupt:
+            return
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                sys.exit(
+                    "server rejected the token (HTTP 401); check NOTIFORWARD_TOKEN"
+                )
+            print(
+                style("33", f"server error HTTP {e.code}, retrying in {backoff}s"),
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 60)
+        except (
+            urllib.error.URLError,
+            OSError,
+            ValueError,
+            http.client.HTTPException,
+        ) as e:
+            reason = getattr(e, "reason", e)
+            print(
+                style("33", f"can't reach {url} ({reason}), retrying in {backoff}s"),
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 60)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

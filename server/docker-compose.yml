@@ -1,0 +1,10 @@
+services:
+  notiforward:
+    image: notiforward-server:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      NOTIFORWARD_TOKEN: ${NOTIFORWARD_TOKEN:?set NOTIFORWARD_TOKEN to a long random string}

@@ -1,0 +1,44 @@
+Get android notification in terminal using a middle man:
+
+phone ==[POST]==> server <==[GET]== computer
+
+Because it uses non-secure HTTP putting it behind e.g.
+Tailscale is a necessity here!
+
+There is no guarantees of delivery, especially the fragile
+nature of notifications, but there is some redundancy
+built-in: a queue in the app that holds messages that
+couldn't be received (up to 20k).
+
+== REASONING
+
+I want to get notifications from certain apps that are
+unavailable through API/CLI. Most of the time, I only want a
+glance to see if it's something that needs urgent fixing, or
+if I can hold on for a bit. This scratches that itch.
+
+== INSTALLATION
+
+1. Install the app on the phone by grabbing an APK from
+   releases.
+2. Build the docker container on the server:
+
+    git clone https://github.com/skogsgren/notiforward
+    cd notiforward
+    docker build -t notiforward-server:latest server
+
+   And then see example docker-compose on what to set
+   when integrating into (pre-existing)? stack.
+3. On the client, clone the repo and symlink the script
+   inside cli to bin, e.g:
+
+   ln -s $(realpath cli/notiwatch) ~/.local/bin/notiwatch
+
+   Then set environment variables to match server setup:
+
+   export NOTIFORWARD_URL="http://<IP>:PORT"
+   export NOTIFORWARD_TOKEN="long-secret-token"
+
+   You can then launch it by running notiwatch
+
+" vim: set autoindent tw=60 cc=60 formatoptions+=t:

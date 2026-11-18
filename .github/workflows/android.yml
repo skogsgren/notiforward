@@ -1,0 +1,51 @@
+name: android apk
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq android-sdk-platform-23 aapt dalvik-exchange zipalign apksigner
+
+      - name: restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Set the KEYSTORE_BASE64 repository secret (README, 'Signing key')."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+      - name: build apk
+        env:
+          KEYSTORE: ${{ runner.temp }}/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'notiforward' }}
+        run: android/build.sh
+
+      - name: Replace the android-latest apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view android-latest >/dev/null 2>&1 \
+            || gh release create android-latest --prerelease --title "Latest APK"
+          gh release upload android-latest android/build/NotiForward.apk --clobber
+          gh release edit android-latest --notes "built from ${GITHUB_SHA:0:7} on $(date -u +%Y-%m-%d)." --prerelease
